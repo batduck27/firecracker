@@ -1004,3 +1004,118 @@ pub(crate) mod tests {
         assert_eq!(block.disk_image_id, id);
     }
 }
+
+#[cfg(feature = "fuzz_target")]
+pub mod fuzzing {
+    use super::*;
+    use crate::virtio::queue::tests::*;
+    use std::cmp;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use utils::byte_order;
+    use utils::tempfile::TempFile;
+    use vm_memory::GuestAddress;
+
+    impl Block {
+        fn set_queue(&mut self, idx: usize, q: Queue) {
+            self.queues[idx] = q;
+        }
+    }
+
+    // Create a default Block instance to be used for fuzzing.
+    fn default_block() -> Block {
+        // Create backing file.
+        let f = TempFile::new().unwrap();
+        f.as_file().set_len(0x1000).unwrap();
+
+        // Rate limiting is enabled but with a high operation rate (10 million ops/s).
+        let rate_limiter = RateLimiter::new(0, 0, 0, 100_000, 0, 10).unwrap();
+
+        Block::new(
+            "fuzzing".to_string(),
+            None,
+            f.as_path().to_str().unwrap().to_string(),
+            false,
+            false,
+            rate_limiter,
+        )
+        .unwrap()
+    }
+
+    struct InputData {
+        data: Vec<u8>,
+        read_pos: AtomicUsize,
+    }
+
+    impl InputData {
+        fn get_slice(&self, len: usize) -> &[u8] {
+            let old_pos = self.read_pos.fetch_add(len, Ordering::AcqRel);
+            &self.data[old_pos..old_pos + len]
+        }
+    }
+
+    pub fn block_fuzzing(data: &[u8]) {
+        // Parse 5 bytes of data to get the info for one VirtqDesc.
+        const DESCRIPTOR_DATA_SIZE: usize = 5;
+        const QUEUE_SIZE: usize = 16;
+        // Maximum size of input data which is allowed.
+        const MAX_DATA_SIZE: usize = QUEUE_SIZE * (DESCRIPTOR_DATA_SIZE + std::u8::MAX as usize);
+
+        let mut data_size = data.len();
+        if data_size > MAX_DATA_SIZE {
+            return;
+        }
+
+        let mut block = default_block();
+        let mem = GuestMemoryMmap::from_ranges(&[(GuestAddress(0), 0x10000)]).unwrap();
+        let vq = VirtQueue::new(GuestAddress(0), &mem, QUEUE_SIZE as u16);
+        let mut idx = 0;
+        let input = InputData {
+            data: data.to_vec(),
+            read_pos: AtomicUsize::new(0),
+        };
+
+        block.set_queue(0, vq.create_queue());
+        block.activate(mem.clone()).unwrap();
+
+        // Process the data received from AFL / input. The data is split in u8 and is
+        // used to populate the fields of a Virtio Descriptor and the referenced memory.
+        loop {
+            if data_size < DESCRIPTOR_DATA_SIZE {
+                break;
+            }
+
+            // Use 2 bytes of data for address representation; one byte for each other fields.
+            let addr = byte_order::read_le_u16(input.get_slice(2));
+            let mut len = input.get_slice(1)[0];
+            let flags = input.get_slice(1)[0];
+            let next = input.get_slice(1)[0];
+
+            data_size -= DESCRIPTOR_DATA_SIZE;
+            // Check if there are enough bytes left to fill the memory.
+            if len as usize > data_size {
+                len = data_size as u8
+            }
+
+            vq.avail.ring[idx].set(idx as u16);
+            vq.dtable[idx].set(addr as u64, len as u32, flags as u16, next as u16);
+
+            // Don't try to write outside of the memory bounds.
+            let bytes_to_write = cmp::min(len as usize, (0xffff - addr) as usize);
+            let write_result =
+                mem.write_slice(input.get_slice(bytes_to_write), GuestAddress(addr as u64));
+            if let Err(_e) = write_result {
+                break;
+            }
+
+            data_size -= bytes_to_write;
+
+            idx += 1;
+            if idx >= QUEUE_SIZE {
+                break;
+            }
+        }
+
+        vq.avail.idx.set(1);
+        block.process_queue(0);
+    }
+}

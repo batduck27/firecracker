@@ -349,7 +349,7 @@ impl Queue {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "fuzz_target"))]
 pub(crate) mod tests {
     extern crate vm_memory;
 
