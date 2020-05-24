@@ -119,7 +119,7 @@ impl Persist<'_> for Net {
 mod tests {
     use super::*;
     use crate::virtio::device::VirtioDevice;
-    use crate::virtio::net::device::tests::*;
+    use crate::virtio::net::device::tests_utils::*;
     use crate::virtio::TYPE_NET;
 
     use std::sync::atomic::Ordering;

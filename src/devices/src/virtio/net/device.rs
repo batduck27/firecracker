@@ -17,7 +17,7 @@ use dumbo::{EthernetFrame, MacAddr, MAC_ADDR_LEN};
 use libc::EAGAIN;
 use logger::{Metric, METRICS};
 use rate_limiter::{BucketUpdate, RateLimiter, TokenType};
-#[cfg(not(test))]
+#[cfg(not(any(test, feature = "fuzz_target")))]
 use std::io::Read;
 use std::io::Write;
 use std::sync::atomic::AtomicUsize;
@@ -106,8 +106,8 @@ pub struct Net {
 
     pub(crate) mmds_ns: Option<MmdsNetworkStack>,
 
-    #[cfg(test)]
-    test_mutators: tests::TestMutators,
+    #[cfg(any(test, feature = "fuzz_target"))]
+    test_mutators: tests_utils::TestMutators,
 }
 
 impl Net {
@@ -184,8 +184,8 @@ impl Net {
             mmds_ns,
             guest_mac: guest_mac.copied(),
 
-            #[cfg(test)]
-            test_mutators: tests::TestMutators::default(),
+            #[cfg(any(test, feature = "fuzz_target"))]
+            test_mutators: tests_utils::TestMutators::default(),
         })
     }
 
@@ -565,7 +565,7 @@ impl Net {
         self.tx_rate_limiter.update_buckets(tx_bytes, tx_ops);
     }
 
-    #[cfg(not(test))]
+    #[cfg(not(any(test, feature = "fuzz_target")))]
     fn read_tap(&mut self) -> io::Result<usize> {
         self.tap.read(&mut self.rx_frame_buf)
     }
@@ -752,48 +752,19 @@ impl VirtioDevice for Net {
     }
 }
 
-#[cfg(test)]
-pub(crate) mod tests {
-    use std::net::Ipv4Addr;
-    use std::os::unix::io::AsRawFd;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Mutex;
-    use std::time::Duration;
-    use std::{io, mem, thread};
+#[cfg(any(test, feature = "fuzz_target"))]
+pub(crate) mod tests_utils {
+    use std::io;
+    use std::sync::atomic::Ordering;
 
     use super::*;
-    use crate::virtio::net::device::{
-        frame_bytes_from_buf, frame_bytes_from_buf_mut, init_vnet_hdr, vnet_hdr_len,
-    };
 
-    use crate::virtio::net::QUEUE_SIZES;
     use crate::virtio::queue::tests::VirtQueue;
-    use crate::virtio::{
-        Net, Queue, VirtioDevice, MAX_BUFFER_SIZE, RX_INDEX, TX_INDEX, TYPE_NET,
-        VIRTIO_MMIO_INT_VRING, VIRTQ_DESC_F_WRITE,
-    };
-    use dumbo::{
-        EthIPv4ArpFrame, EthernetFrame, MacAddr, ETHERTYPE_ARP, ETH_IPV4_FRAME_LEN, MAC_ADDR_LEN,
-    };
-    use logger::{Metric, METRICS};
-    use polly::event_manager::{EventManager, Subscriber};
-    use rate_limiter::{RateLimiter, TokenBucket, TokenType};
-    use utils::epoll::{EpollEvent, EventSet};
-    use virtio_gen::virtio_net::{
-        virtio_net_hdr_v1, VIRTIO_F_VERSION_1, VIRTIO_NET_F_CSUM, VIRTIO_NET_F_GUEST_CSUM,
-        VIRTIO_NET_F_GUEST_TSO4, VIRTIO_NET_F_GUEST_UFO, VIRTIO_NET_F_HOST_TSO4,
-        VIRTIO_NET_F_HOST_UFO, VIRTIO_NET_F_MAC,
-    };
+    use crate::virtio::{Net, Queue};
+    use dumbo::MacAddr;
+    use rate_limiter::RateLimiter;
 
     static NEXT_INDEX: AtomicUsize = AtomicUsize::new(1);
-
-    macro_rules! check_metric_after_block {
-        ($metric:expr, $delta:expr, $block:expr) => {{
-            let before = $metric.count();
-            let _ = $block;
-            assert_eq!($metric.count(), before + $delta, "unexpected metric value");
-        }};
-    }
 
     // Used to simulate tap read fails in tests.
     pub struct TestMutators {
@@ -867,9 +838,7 @@ pub(crate) mod tests {
             self.queues.push(rxq);
             self.queues.push(txq);
         }
-    }
 
-    impl Net {
         // This needs to be public to be accessible from the non-cfg-test `impl Net`.
         pub fn read_tap(&mut self) -> io::Result<usize> {
             use std::cmp::min;
@@ -889,6 +858,48 @@ pub(crate) mod tests {
                 Ok(count)
             }
         }
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use std::net::Ipv4Addr;
+    use std::os::unix::io::AsRawFd;
+    use std::sync::atomic::Ordering;
+    use std::sync::Mutex;
+    use std::time::Duration;
+    use std::{mem, thread};
+
+    use super::*;
+    use crate::virtio::net::device::tests_utils::*;
+    use crate::virtio::net::device::{
+        frame_bytes_from_buf, frame_bytes_from_buf_mut, init_vnet_hdr, vnet_hdr_len,
+    };
+
+    use crate::virtio::net::QUEUE_SIZES;
+    use crate::virtio::{
+        Net, VirtioDevice, MAX_BUFFER_SIZE, RX_INDEX, TX_INDEX, TYPE_NET, VIRTIO_MMIO_INT_VRING,
+        VIRTQ_DESC_F_WRITE,
+    };
+    use dumbo::{
+        EthIPv4ArpFrame, EthernetFrame, MacAddr, ETHERTYPE_ARP, ETH_IPV4_FRAME_LEN, MAC_ADDR_LEN,
+    };
+    use logger::{Metric, METRICS};
+    use polly::event_manager::{EventManager, Subscriber};
+    use rate_limiter::{RateLimiter, TokenBucket, TokenType};
+    use utils::epoll::{EpollEvent, EventSet};
+    use virtio_gen::virtio_net::{
+        virtio_net_hdr_v1, VIRTIO_F_VERSION_1, VIRTIO_NET_F_CSUM, VIRTIO_NET_F_GUEST_CSUM,
+        VIRTIO_NET_F_GUEST_TSO4, VIRTIO_NET_F_GUEST_UFO, VIRTIO_NET_F_HOST_TSO4,
+        VIRTIO_NET_F_HOST_UFO, VIRTIO_NET_F_MAC,
+    };
+
+    macro_rules! check_metric_after_block {
+        ($metric:expr, $delta:expr, $block:expr) => {{
+            let before = $metric.count();
+            let _ = $block;
+            assert_eq!($metric.count(), before + $delta, "unexpected metric value");
+        }};
     }
 
     #[test]
@@ -1746,5 +1757,114 @@ pub(crate) mod tests {
 
         net.interrupt_evt().write(1).unwrap();
         assert_eq!(net.interrupt_evt().read().unwrap() as usize, 1);
+    }
+}
+
+#[cfg(feature = "fuzz_target")]
+pub mod fuzzing {
+    use super::*;
+    use crate::virtio::net::device::tests_utils::*;
+    use crate::virtio::queue::tests::*;
+    use polly::event_manager::{EventManager, Subscriber};
+    use std::cmp;
+    use std::os::unix::io::AsRawFd;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use utils::byte_order;
+    use utils::epoll::{EpollEvent, EventSet};
+    use vm_memory::GuestAddress;
+
+    struct InputData {
+        data: Vec<u8>,
+        read_pos: AtomicUsize,
+    }
+
+    impl InputData {
+        fn get_slice(&self, len: usize) -> &[u8] {
+            let old_pos = self.read_pos.fetch_add(len, Ordering::AcqRel);
+            &self.data[old_pos..old_pos + len]
+        }
+    }
+
+    pub fn net_fuzzing(data: &[u8]) {
+        // Parse 5 bytes of data to get the info for one VirtqDesc and one byte for queue index.
+        const DESCRIPTOR_DATA_SIZE: usize = 6;
+        const QUEUE_SIZE: usize = 16;
+        const QUEUES_NUM: usize = 2;
+        const MAX_DATA_SIZE: usize =
+            QUEUES_NUM * QUEUE_SIZE * (DESCRIPTOR_DATA_SIZE + std::u8::MAX as usize);
+
+        let mut data_size = data.len();
+        if data_size > MAX_DATA_SIZE {
+            return;
+        }
+
+        let mut event_manager = EventManager::new().unwrap();
+        let mut net = Net::default_net(TestMutators::default());
+        let mem = GuestMemoryMmap::from_ranges(&[(GuestAddress(0), 0x10000)]).unwrap();
+        let (rxq, txq) = Net::virtqueues(&mem);
+        let queues: [&VirtQueue; QUEUES_NUM] = [&rxq, &txq];
+        let mut idexes: [usize; QUEUES_NUM] = [0, 0];
+        let input = InputData {
+            data: data.to_vec(),
+            read_pos: AtomicUsize::new(0),
+        };
+
+        net.assign_queues(rxq.create_queue(), txq.create_queue());
+        net.activate(mem.clone()).unwrap();
+
+        // Process the data received from AFL / input. The data is split in u8 and is
+        // used to populate the fields of a Virtio Descriptor and the referenced memory.
+        loop {
+            if data_size < DESCRIPTOR_DATA_SIZE {
+                break;
+            }
+
+            // Get the queue index.
+            let queue_idx = input.get_slice(1)[0];
+            // Use 2 bytes of data for address representation; one byte for the other fields.
+            let addr = byte_order::read_le_u16(input.get_slice(2));
+            let mut len = input.get_slice(1)[0];
+            let flags = input.get_slice(1)[0];
+            let next = input.get_slice(1)[0];
+
+            data_size -= DESCRIPTOR_DATA_SIZE;
+            // Check if there are enough bytes left to fill the memory.
+            if len as usize > data_size {
+                len = data_size as u8
+            }
+
+            let vq = queues[queue_idx as usize % QUEUES_NUM];
+            let idx = &mut idexes[queue_idx as usize % QUEUES_NUM];
+
+            vq.avail.ring[*idx].set(*idx as u16);
+            vq.dtable[*idx].set(addr as u64, len as u32, flags as u16, next as u16);
+
+            // Don't try to write outside of the memory bounds.
+            let bytes_to_write = cmp::min(len as usize, (0xffff - addr) as usize);
+            let write_result =
+                mem.write_slice(input.get_slice(bytes_to_write), GuestAddress(addr as u64));
+            if let Err(_e) = write_result {
+                break;
+            }
+
+            data_size -= bytes_to_write;
+
+            *idx += 1;
+            if *idx >= QUEUE_SIZE {
+                break;
+            }
+        }
+
+        // Process the queues.
+        for (i, cnt) in idexes.iter().enumerate() {
+            if *cnt == 0 {
+                continue;
+            }
+
+            queues[i].avail.idx.set(1);
+            net.queue_evts[i].write(1).unwrap();
+            let event = EpollEvent::new(EventSet::IN, net.queue_evts[i].as_raw_fd() as u64);
+            net.process(&event, &mut event_manager);
+        }
     }
 }
