@@ -15,5 +15,10 @@ seccomp = { path = "../seccomp" }
 utils = { path = "../utils" }
 vmm = { path = "../vmm" }
 
-[dev-dependencies]
-libc = ">=0.2.39"
+libc = { version = ">=0.2.39", optional = true }
+
+[dev-dependencies.libc]
+version = ">=0.2.39"
+
+[features]
+fuzz_target = [ "libc" ]
