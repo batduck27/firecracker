@@ -6,7 +6,7 @@
 // found in the THIRD-PARTY file.
 
 mod csm;
-mod device;
+pub mod device;
 mod event_handler;
 mod packet;
 pub mod persist;
@@ -155,9 +155,11 @@ pub trait VsockChannel {
 /// translates guest-side vsock connections to host-side Unix domain socket connections.
 pub trait VsockBackend: VsockChannel + VsockEpollListener + Send {}
 
-#[cfg(test)]
+#[cfg(any(feature = "fuzz_target", test))]
 pub(crate) mod tests {
-    use super::device::{Vsock, RXQ_INDEX, TXQ_INDEX};
+    use super::device::Vsock;
+    #[cfg(not(feature = "fuzz_target"))]
+    use super::device::Vsock::{RXQ_INDEX, TXQ_INDEX};
     use super::packet::VSOCK_PKT_HDR_SIZE;
     use super::*;
 
@@ -166,6 +168,7 @@ pub(crate) mod tests {
 
     use crate::virtio::queue::tests::VirtQueue as GuestQ;
     use crate::virtio::{VirtioDevice, VIRTQ_DESC_F_NEXT, VIRTQ_DESC_F_WRITE};
+    #[cfg(not(feature = "fuzz_target"))]
     use utils::epoll::EpollEvent;
     use vm_memory::{GuestAddress, GuestMemoryMmap};
 
@@ -191,12 +194,15 @@ pub(crate) mod tests {
                 evset: None,
             }
         }
+        #[cfg(not(feature = "fuzz_target"))]
         pub fn set_rx_err(&mut self, err: Option<VsockError>) {
             self.rx_err = err;
         }
+        #[cfg(not(feature = "fuzz_target"))]
         pub fn set_tx_err(&mut self, err: Option<VsockError>) {
             self.tx_err = err;
         }
+        #[cfg(not(feature = "fuzz_target"))]
         pub fn set_pending_rx(&mut self, prx: bool) {
             self.pending_rx = prx;
         }
@@ -271,7 +277,10 @@ pub(crate) mod tests {
         }
 
         pub fn create_event_handler_context(&self) -> EventHandlerContext {
+            #[cfg(test)]
             const QSIZE: u16 = 2;
+            #[cfg(not(test))]
+            const QSIZE: u16 = 16;
 
             let guest_rxvq = GuestQ::new(GuestAddress(0x0010_0000), &self.mem, QSIZE as u16);
             let guest_txvq = GuestQ::new(GuestAddress(0x0020_0000), &self.mem, QSIZE as u16);
@@ -321,11 +330,13 @@ pub(crate) mod tests {
             self.device.activate(mem).unwrap();
         }
 
+        #[cfg(not(feature = "fuzz_target"))]
         pub fn signal_txq_event(&mut self) {
             self.device.queue_events[TXQ_INDEX].write(1).unwrap();
             self.device
                 .handle_txq_event(&EpollEvent::new(EventSet::IN, 0));
         }
+        #[cfg(not(feature = "fuzz_target"))]
         pub fn signal_rxq_event(&mut self) {
             self.device.queue_events[RXQ_INDEX].write(1).unwrap();
             self.device

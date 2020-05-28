@@ -23,3 +23,7 @@ path = "src/block_fuzz_target.rs"
 [[bin]]
 name = "net_fuzz_target"
 path = "src/net_fuzz_target.rs"
+
+[[bin]]
+name = "vsock_fuzz_target"
+path = "src/vsock_fuzz_target.rs"
