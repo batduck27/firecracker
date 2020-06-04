@@ -19,3 +19,7 @@ devices = { path = "../src/devices", features = ["fuzz_target"] }
 [[bin]]
 name = "block_fuzz_target"
 path = "src/block_fuzz_target.rs"
+
+[[bin]]
+name = "net_fuzz_target"
+path = "src/net_fuzz_target.rs"

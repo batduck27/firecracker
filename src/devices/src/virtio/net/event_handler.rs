@@ -118,7 +118,7 @@ pub mod tests {
     use std::sync::{Arc, Mutex};
 
     use super::*;
-    use crate::virtio::net::device::tests::*;
+    use crate::virtio::net::device::tests_utils::*;
 
     #[test]
     fn test_event_handler() {
