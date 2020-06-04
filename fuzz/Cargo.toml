@@ -1,0 +1,21 @@
+[package]
+name = "firecracker-fuzz"
+version = "0.1.0"
+authors = ["George Mocanu <mocanu.geo98@gmail.com>"]
+edition = "2018"
+
+# Prevent this from interfering with workspaces
+[workspace]
+members = ["."]
+
+[features]
+afl_fuzz = ["afl"]
+stdin_fuzz = []
+
+[dependencies]
+afl = { version = "0.7.0", optional = true }
+devices = { path = "../src/devices", features = ["fuzz_target"] }
+
+[[bin]]
+name = "block_fuzz_target"
+path = "src/block_fuzz_target.rs"

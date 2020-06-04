@@ -4,6 +4,9 @@ version = "0.1.0"
 authors = ["The Chromium OS Authors"]
 edition = "2018"
 
+[features]
+fuzz_target = []
+
 [dependencies]
 libc = ">=0.2.39"
 dumbo = { path = "../dumbo" }
