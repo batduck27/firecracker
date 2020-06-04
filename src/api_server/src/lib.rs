@@ -616,3 +616,59 @@ mod tests {
         assert!(sock.read(&mut buf[..]).unwrap() > 0);
     }
 }
+
+#[cfg(feature = "fuzz_target")]
+pub mod fuzzing {
+    extern crate libc;
+
+    use std::io::Write;
+    use std::os::unix::net::UnixStream;
+    use std::sync::mpsc::channel;
+
+    use super::*;
+    use micro_http::HttpConnection;
+    use mmds::MMDS;
+    use vmm::builder::StartMicrovmError;
+    use vmm::rpc_interface::VmmActionError;
+    use vmm::vmm_config::instance_info::InstanceInfo;
+
+    pub fn api_server_fuzzing(data: &[u8]) {
+        let vmm_shared_info = Arc::new(RwLock::new(InstanceInfo {
+            started: false,
+            id: "api_server_fuzzing".to_string(),
+            vmm_version: "version 0.1.0".to_string(),
+            app_name: "app name".to_string(),
+        }));
+
+        let to_vmm_fd = EventFd::new(libc::EFD_NONBLOCK).unwrap();
+        let (api_request_sender, _from_api) = channel();
+        let (to_api, vmm_response_receiver) = channel();
+        let mmds_info = MMDS.clone();
+
+        let api_server = ApiServer::new(
+            mmds_info,
+            vmm_shared_info,
+            api_request_sender,
+            vmm_response_receiver,
+            to_vmm_fd,
+        )
+        .unwrap();
+
+        to_api
+            .send(Box::new(Err(VmmActionError::StartMicrovm(
+                StartMicrovmError::MicroVMAlreadyRunning,
+            ))))
+            .unwrap();
+
+        let (mut sender, receiver) = UnixStream::pair().unwrap();
+        let mut connection = HttpConnection::new(receiver);
+
+        sender.write_all(data).unwrap();
+        if connection.try_read().is_ok() {
+            let req = connection.pop_parsed_request();
+            if req.is_some() {
+                let _response = api_server.handle_request(&req.unwrap());
+            }
+        }
+    }
+}
