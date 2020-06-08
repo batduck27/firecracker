@@ -375,3 +375,112 @@ mod tests {
         ctx.device.activate(ctx.mem.clone()).unwrap();
     }
 }
+
+#[cfg(feature = "fuzz_target")]
+pub mod fuzzing {
+    use super::super::tests::TestContext;
+    use super::*;
+    use crate::virtio::queue::tests::VirtQueue as GuestQ;
+    use polly::event_manager::{EventManager, Subscriber};
+    use std::cmp;
+    use std::os::unix::io::AsRawFd;
+    use utils::epoll::{EpollEvent, EventSet};
+    use vm_memory::{Bytes, GuestAddress};
+
+    struct InputData {
+        data: Vec<u8>,
+        read_pos: AtomicUsize,
+    }
+
+    impl InputData {
+        fn get_slice(&self, len: usize) -> &[u8] {
+            let old_pos = self.read_pos.fetch_add(len, Ordering::AcqRel);
+            &self.data[old_pos..old_pos + len]
+        }
+    }
+
+    pub fn vsock_fuzzing(data: &[u8]) {
+        // Parse 14 bytes of data to get the info for one VirtqDesc and one byte for queue index.
+        const DESCRIPTOR_DATA_SIZE: usize = 15;
+        const QUEUE_SIZE: usize = 16;
+        const QUEUES_NUM: usize = 3;
+        const MAX_DATA_SIZE: usize =
+            QUEUES_NUM * QUEUE_SIZE * (DESCRIPTOR_DATA_SIZE + std::u8::MAX as usize);
+
+        let mut data_size = data.len();
+        if data_size > MAX_DATA_SIZE {
+            return;
+        }
+
+        let mut event_manager = EventManager::new().unwrap();
+        let test_ctx = TestContext::new();
+        let mut ctx = test_ctx.create_event_handler_context();
+        ctx.mock_activate(test_ctx.mem.clone());
+
+        let queues: [&GuestQ; QUEUES_NUM] = [&ctx.guest_rxvq, &ctx.guest_txvq, &ctx.guest_evvq];
+        let mut idexes: [usize; QUEUES_NUM] = [0, 0, 0];
+        let input = InputData {
+            data: data.to_vec(),
+            read_pos: AtomicUsize::new(0),
+        };
+
+        // Process the data received from AFL / input. The data is split in u8 and is
+        // used to populate the fields of a Virtio Descriptor and the referenced memory.
+        loop {
+            if data_size < DESCRIPTOR_DATA_SIZE {
+                break;
+            }
+
+            // Get the queue index.
+            let queue_idx = input.get_slice(1)[0];
+            let addr = cmp::min(
+                byte_order::read_le_u64(input.get_slice(8)),
+                test_ctx.mem_size as u64,
+            );
+            let mut len = byte_order::read_le_u32(input.get_slice(4));
+            let flags = input.get_slice(1)[0];
+            let next = input.get_slice(1)[0];
+
+            data_size -= DESCRIPTOR_DATA_SIZE;
+            // Check if there are enough bytes left to fill the memory.
+            if len as usize > data_size {
+                len = data_size as u32
+            }
+
+            let vq = queues[queue_idx as usize % QUEUES_NUM];
+            let idx = &mut idexes[queue_idx as usize % QUEUES_NUM];
+
+            vq.avail.ring[*idx].set(*idx as u16);
+            vq.dtable[*idx].set(addr as u64, len as u32, flags as u16, next as u16);
+
+            // Don't try to write outside of the memory bounds.
+            let bytes_to_write = cmp::min(len as usize, (test_ctx.mem_size as u64 - addr) as usize);
+            let write_result = test_ctx
+                .mem
+                .write_slice(input.get_slice(bytes_to_write), GuestAddress(addr));
+            if let Err(_e) = write_result {
+                break;
+            }
+
+            data_size -= bytes_to_write;
+
+            *idx += 1;
+            if *idx >= QUEUE_SIZE {
+                break;
+            }
+        }
+
+        // Process the queues.
+        for (i, cnt) in idexes.iter().enumerate() {
+            if *cnt == 0 {
+                continue;
+            }
+
+            queues[i].avail.idx.set(1);
+            ctx.device.queue_events[i].write(1).unwrap();
+            let event =
+                EpollEvent::new(EventSet::IN, ctx.device.queue_events[i].as_raw_fd() as u64);
+            ctx.device.process(&event, &mut event_manager);
+        }
+    }
+}
