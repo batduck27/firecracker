@@ -73,6 +73,7 @@ RUN mkdir "$TMP_BUILD_DIR" \
         && cd "$TMP_BUILD_DIR" \
             && cargo install cargo-kcov \
             && cargo install cargo-audit \
+            && cargo install afl --version 0.7.0 \
             && cargo kcov --print-install-kcov-sh | sh \
         && rm -rf "$CARGO_HOME/registry" \
         && ln -s "$CARGO_REGISTRY_DIR" "$CARGO_HOME/registry" \
