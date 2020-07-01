@@ -18,11 +18,14 @@ libfuzzer_fuzz = ["libfuzzer-sys"]
 stdin_fuzz = []
 
 [dependencies]
-afl = { version = "0.7.0", optional = true }
+afl = { version = "0.7.0", optional = true, features = ["reset_lazy_static"] }
 honggfuzz = { version = "0.5", optional = true }
 libfuzzer-sys = { version = "0.3", optional = true }
 devices = { path = "../src/devices", features = ["fuzz_target"] }
 api_server = { path = "../src/api_server", features = ["fuzz_target"] }
+
+[patch.crates-io]
+lazy_static = { git = "https://github.com/rust-fuzz/resettable-lazy-static.rs" }
 
 [[bin]]
 name = "block_fuzz_target"

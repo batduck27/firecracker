@@ -7,6 +7,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "cc 1.0.50 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "lazy_static 1.4.0 (git+https://github.com/rust-fuzz/resettable-lazy-static.rs)",
  "libc 0.2.69 (registry+https://github.com/rust-lang/crates.io-index)",
  "rustc_version 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "xdg 2.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -205,7 +206,7 @@ version = "0.5.49"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "arbitrary 0.4.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "lazy_static 1.4.0 (git+https://github.com/rust-fuzz/resettable-lazy-static.rs)",
  "memmap 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -254,7 +255,7 @@ dependencies = [
 [[package]]
 name = "lazy_static"
 version = "1.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
+source = "git+https://github.com/rust-fuzz/resettable-lazy-static.rs#c5eb91f2bde4c2f70092d1574f7145cb33ff0922"
 
 [[package]]
 name = "libc"
@@ -282,7 +283,7 @@ dependencies = [
 name = "logger"
 version = "0.1.0"
 dependencies = [
- "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "lazy_static 1.4.0 (git+https://github.com/rust-fuzz/resettable-lazy-static.rs)",
  "libc 0.2.69 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.106 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -312,7 +313,7 @@ dependencies = [
 name = "mmds"
 version = "0.1.0"
 dependencies = [
- "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "lazy_static 1.4.0 (git+https://github.com/rust-fuzz/resettable-lazy-static.rs)",
  "micro_http 0.1.0",
  "serde_json 1.0.51 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -545,7 +546,7 @@ dependencies = [
  "kernel 0.1.0",
  "kvm-bindings 0.2.0 (git+https://github.com/firecracker-microvm/kvm-bindings?tag=v0.2.0-1)",
  "kvm-ioctls 0.5.0 (git+https://github.com/firecracker-microvm/kvm-ioctls?tag=v0.5.0-1)",
- "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "lazy_static 1.4.0 (git+https://github.com/rust-fuzz/resettable-lazy-static.rs)",
  "libc 0.2.69 (registry+https://github.com/rust-lang/crates.io-index)",
  "logger 0.1.0",
  "mmds 0.1.0",
@@ -627,7 +628,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum kernel32-sys 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)" = "7507624b29483431c0ba2d82aece8ca6cdba9382bff4ddd0f7490560c056098d"
 "checksum kvm-bindings 0.2.0 (git+https://github.com/firecracker-microvm/kvm-bindings?tag=v0.2.0-1)" = "<none>"
 "checksum kvm-ioctls 0.5.0 (git+https://github.com/firecracker-microvm/kvm-ioctls?tag=v0.5.0-1)" = "<none>"
-"checksum lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
+"checksum lazy_static 1.4.0 (git+https://github.com/rust-fuzz/resettable-lazy-static.rs)" = "<none>"
 "checksum libc 0.2.69 (registry+https://github.com/rust-lang/crates.io-index)" = "99e85c08494b21a9054e7fe1374a732aeadaff3980b6990b94bfd3a70f690005"
 "checksum libfuzzer-sys 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)" = "8d718794b8e23533b9069bd2c4597d69e41cc7ab1c02700a502971aca0cdcf24"
 "checksum log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)" = "14b6052be84e6b71ab17edffc2eeabf5c2c3ae1fdb464aae35ac50c67a44e1f7"
